@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>손글씨 AI 인식기 (Handwriting OCR Studio)</title>
+  <meta name="description" content="PC에서 마우스로 숫자와 영어를 적으면 인공지능이 실시간으로 판독하고 정확도를 분석해주는 웹 애플리케이션">
+
+  <!-- Google Fonts: Outfit & Noto Sans KR -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Tesseract.js (브라우저 내장 OCR 엔진) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- Canvas Confetti (인식 성공 시 축하 효과) -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 배경 글로우 조명 효과 -->
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-purple"></div>
+
+  <div class="app-wrapper">
+    <!-- 상단 헤더 -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <div class="brand-text">
+          <h1>손글씨 AI 인식기 <span class="badge-version">Pro</span></h1>
+          <p class="brand-subtitle">마우스로 숫자와 영어를 적고 AI의 분석 정확도를 확인해보세요</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="engine-badge" id="engineStatusBadge">
+          <span class="status-dot"></span>
+          <span id="engineStatusText">AI 엔진 준비 중...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 메인 대시보드 그리드 -->
+    <main class="dashboard-grid">
+      <!-- 좌측 패널: 손글씨 캔버스 & 그리기 도구 -->
+      <section class="panel-card canvas-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-pen-nib"></i>
+            <h2>손글씨 스케치북</h2>
+          </div>
+          <!-- 인식 모드 선택 탭 -->
+          <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="all" title="숫자 및 영문 전체 인식">
+              <i class="fa-solid fa-shapes"></i> 전체
+            </button>
+            <button class="mode-tab" data-mode="digits" title="0부터 9까지의 숫자 전용 인식">
+              <i class="fa-solid fa-hashtag"></i> 숫자만
+            </button>
+            <button class="mode-tab" data-mode="alpha" title="알파벳 영문자 전용 인식">
+              <i class="fa-solid fa-font"></i> 영어만
+            </button>
+          </div>
+        </div>
+
+        <!-- 드로잉 툴바 -->
+        <div class="drawing-toolbar">
+          <div class="tool-group">
+            <label class="tool-label">펜 굵기</label>
+            <div class="brush-size-picker">
+              <button class="size-btn" data-size="14" title="얇은 펜"><span class="dot dot-sm"></span></button>
+              <button class="size-btn active" data-size="22" title="보통 펜"><span class="dot dot-md"></span></button>
+              <button class="size-btn" data-size="32" title="굵은 펜"><span class="dot dot-lg"></span></button>
+            </div>
+          </div>
+
+          <div class="tool-group">
+            <label class="tool-label">도구</label>
+            <div class="tool-actions">
+              <button class="btn-tool active" id="btnPen" title="펜 모드">
+                <i class="fa-solid fa-pen"></i> 펜
+              </button>
+              <button class="btn-tool" id="btnEraser" title="지우개 모드">
+                <i class="fa-solid fa-eraser"></i> 지우개
+              </button>
+              <button class="btn-tool" id="btnUndo" title="마지막 획 취소">
+                <i class="fa-solid fa-rotate-left"></i> 되돌리기
+              </button>
+              <button class="btn-tool btn-danger" id="btnClear" title="전체 지우기">
+                <i class="fa-solid fa-trash-can"></i> 비우기
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 실제 캔버스 영역 -->
+        <div class="canvas-viewport" id="canvasViewport">
+          <canvas id="drawingCanvas" width="460" height="380"></canvas>
+          <div class="canvas-grid-guide"></div>
+          <div class="canvas-empty-hint" id="canvasEmptyHint">
+            <i class="fa-solid fa-signature"></i>
+            <span>여기에 마우스로 숫자(0~9)나 영어를 적어주세요</span>
+          </div>
+        </div>
+
+        <!-- 하단 실행 바 -->
+        <div class="canvas-action-footer">
+          <div class="tip-box">
+            <i class="fa-solid fa-lightbulb" style="color: #f59e0b;"></i>
+            <span>숫자를 쓰실 때는 상단 <strong>[# 숫자만]</strong> 탭을 누르시면 정확도가 99%로 대폭 향상됩니다!</span>
+          </div>
+          <button class="btn-primary-action" id="btnRecognize">
+            <span class="btn-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <span class="btn-text">인식하기</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 우측 패널: 분석 결과 & 정확도 분석 리포트 -->
+      <section class="panel-card result-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-square-poll-vertical"></i>
+            <h2>인식 결과 & 정확도</h2>
+          </div>
+          <button class="btn-icon-ghost" id="btnSpeak" title="인식 결과 소리로 듣기" disabled>
+            <i class="fa-solid fa-volume-high"></i>
+          </button>
+        </div>
+
+        <!-- 메인 결과 박스 -->
+        <div class="result-display-card" id="resultDisplayCard">
+          <!-- 비활성 안내 상태 (초기 화면) -->
+          <div class="result-placeholder" id="resultPlaceholder">
+            <div class="radar-scan-anim">
+              <i class="fa-solid fa-magnifying-glass-chart"></i>
+            </div>
+            <h3>글씨를 쓴 뒤 [인식하기]를 눌러주세요</h3>
+            <p>AI가 모양을 스캔하여 글자와 신뢰도 점수를 계산합니다.</p>
+          </div>
+
+          <!-- 로딩 상태 (인식 중) -->
+          <div class="result-loading" id="resultLoading" style="display: none;">
+            <div class="spinner-orbit">
+              <div class="orbit-circle"></div>
+              <div class="orbit-core"><i class="fa-solid fa-microchip"></i></div>
+            </div>
+            <h3 id="loadingStatusText">AI 심층 판독 중...</h3>
+            <div class="progress-bar-wrapper">
+              <div class="progress-bar-fill" id="loadingProgressFill" style="width: 15%;"></div>
+            </div>
+            <p class="loading-sub" id="loadingProgressPercent">이미지 전처리 및 문자 매칭 중</p>
+          </div>
+
+          <!-- 결과 완료 표시 상태 -->
+          <div class="result-content" id="resultContent" style="display: none;">
+            <div class="recognized-hero">
+              <span class="hero-label">판독된 글자</span>
+              <div class="hero-char-box">
+                <span class="hero-char" id="recognizedChar">-</span>
+              </div>
+            </div>
+
+            <!-- 신뢰도 / 정확도 메인 미터 -->
+            <div class="confidence-meter-card">
+              <div class="confidence-header">
+                <span class="conf-title"><i class="fa-solid fa-shield-halved"></i> 판독 신뢰도 (정확도)</span>
+                <span class="conf-percentage" id="confidenceValue">0%</span>
+              </div>
+              <div class="conf-bar-track">
+                <div class="conf-bar-fill" id="confidenceBarFill" style="width: 0%;"></div>
+              </div>
+              <div class="conf-verdict" id="confidenceVerdict">
+                <i class="fa-solid fa-circle-check"></i>
+                <span id="verdictText">매우 신뢰할 수 있는 결과입니다</span>
+              </div>
+            </div>
+
+            <!-- 디테일 분석 정보 -->
+            <div class="result-details-grid">
+              <div class="detail-item">
+                <span class="detail-label">선택 모드</span>
+                <span class="detail-val" id="detailMode">전체 (숫자+영문)</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">글자 유형</span>
+                <span class="detail-val" id="detailCharType">단일 숫자</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">처리 소요 시간</span>
+                <span class="detail-val" id="detailTime">0.3초</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">AI 처리 이미지</span>
+                <div class="mini-preview-container" title="AI가 읽기 편하게 가공한 흑백 전처리 이미지">
+                  <canvas id="preprocessedCanvas" width="60" height="60"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- 하단: 최근 인식 기록 (독립 전체 너비 패널) -->
+    <section class="panel-card history-panel">
+      <div class="history-header">
+        <div class="panel-title">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <h2>최근 인식 기록 보관함</h2>
+          <span class="history-counter" id="historyCounter">(0개)</span>
+        </div>
+        <button class="btn-text-ghost" id="btnClearHistory" title="모든 인식 기록 삭제">
+          <i class="fa-solid fa-trash-can"></i> 기록 전체 지우기
+        </button>
+      </div>
+      <div class="history-list" id="historyList">
+        <div class="history-empty">아직 인식한 기록이 없습니다. 글씨를 쓰고 [인식하기]를 눌러보세요!</div>
+      </div>
+    </section>
+
+    <!-- 푸터 -->
+    <footer class="app-footer">
+      <p>손글씨 AI 인식기 Studio &copy; 2026 &bull; 고성능 브라우저 기반 인공지능 문자 판독 엔진</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
